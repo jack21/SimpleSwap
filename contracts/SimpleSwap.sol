@@ -114,7 +114,8 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
         // 轉帳
         ERC20(tokenA).transfer(msg.sender, amountA);
         ERC20(tokenB).transfer(msg.sender, amountB);
-        _burn(msg.sender, liquidity);
+        transferFrom(msg.sender, address(this), liquidity);
+        _burn(address(this), liquidity);
         reserveA -= amountA;
         reserveB -= amountB;
         emit RemoveLiquidity(msg.sender, amountA, amountB, liquidity);
