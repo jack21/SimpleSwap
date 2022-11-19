@@ -27,28 +27,28 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
     /// @return amountOut The amount of tokenOut received
     function swap(address tokenIn, address tokenOut, uint256 amountIn) external returns (uint256 amountOut) {
         // 檢查
-        // console.log("%s vs %s", tokenA, tokenIn);
         require(tokenIn == tokenA || tokenIn == tokenB, "SimpleSwap: INVALID_TOKEN_IN");
         require(tokenOut == tokenA || tokenOut == tokenB, "SimpleSwap: INVALID_TOKEN_OUT");
         require(tokenIn != tokenOut, "SimpleSwap: IDENTICAL_ADDRESS");
         require(amountIn > 0, "SimpleSwap: INSUFFICIENT_INPUT_AMOUNT");
         // 計算
-        (uint256 _reserveA, uint256 _reserveB) = this.getReserves();
-        uint256 _k = _reserveA * _reserveB;
+        uint256 _k = reserveA * reserveB;
         uint256 _amountOut = 0;
-        // tokenIn == tokenA
-        // ? _reserveB - _k / (_reserveA + amountIn)
-        // : _reserveA - _k / (_reserveB + amountIn);
         if (tokenIn == tokenA) {
-            _amountOut = _reserveB - _k / (_reserveA + amountIn);
+            // _amountOut = reserveB - _k / (reserveA + amountIn); // 這算法算出來是 1，算法應該也可以，但不確定，上課再來問導師
+            uint256 _newReserveA = reserveA + amountIn;
+            uint256 _newK = _newReserveA * reserveB;
+            _amountOut = (_newK - _k) / _newReserveA;
             reserveA += amountIn;
             reserveB -= _amountOut;
         } else {
-            _amountOut = _reserveA - _k / (_reserveB + amountIn);
+            // _amountOut = reserveA - _k / (reserveB + amountIn); // 這算法算出來是 1，算法應該也可以，但不確定，上課再來問導師
+            uint256 _newReserveB = reserveA + amountIn;
+            uint256 _newK = _newReserveB * reserveA;
+            _amountOut = (_newK - _k) / _newReserveB;
             reserveA -= _amountOut;
             reserveB += amountIn;
         }
-        // console.log("K: %s, Out: %s, T: %s", _k, _amountOut, _k / (_reserveA + amountIn));
         require(_amountOut > 0, "SimpleSwap: INSUFFICIENT_OUTPUT_AMOUNT");
         // 轉帳
         ERC20(tokenIn).transferFrom(msg.sender, address(this), amountIn);
@@ -78,14 +78,9 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
             _amountAIn = amountAIn;
             _amountBIn = amountBIn;
             _liquidity = Math.sqrt(_amountAIn * _amountBIn);
-            // uint256 balanceA = ERC20(tokenA).balanceOf(msg.sender);
-            // uint256 balanceB = ERC20(tokenB).balanceOf(msg.sender);
-            // console.log("1 A: %s, B: %s", amountAIn, amountBIn);
-            // console.log("2 A: %s, B: %s", balanceA, balanceB);
         } else {
-            (uint256 _reserveA, uint256 _reserveB) = this.getReserves();
-            _amountAIn = Math.min(amountAIn, (amountBIn * _reserveA) / _reserveB);
-            _amountBIn = Math.min(amountBIn, (amountAIn * _reserveB) / _reserveA);
+            _amountAIn = Math.min(amountAIn, (amountBIn * reserveA) / reserveB);
+            _amountBIn = Math.min(amountBIn, (amountAIn * reserveB) / reserveA);
             _liquidity = Math.sqrt(_amountAIn * _amountBIn);
         }
         // 轉帳
@@ -94,7 +89,6 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
         _mint(msg.sender, _liquidity);
         reserveA += _amountAIn;
         reserveB += _amountBIn;
-        // console.log("3 A: %s, B: %s", reserveA, reserveB);
         emit AddLiquidity(msg.sender, _amountAIn, _amountBIn, _liquidity);
         return (_amountAIn, _amountBIn, _liquidity);
     }
@@ -108,14 +102,16 @@ contract SimpleSwap is ISimpleSwap, ERC20 {
         require(liquidity > 0, "SimpleSwap: INSUFFICIENT_LIQUIDITY_BURNED");
         // 計算
         uint256 _totalSupply = totalSupply();
-        (uint256 _reserveA, uint256 _reserveB) = this.getReserves();
-        amountA = (liquidity * _reserveA) / _totalSupply;
-        amountB = (liquidity * _reserveB) / _totalSupply;
+        amountA = (liquidity * reserveA) / _totalSupply;
+        amountB = (liquidity * reserveB) / _totalSupply;
         // 轉帳
         ERC20(tokenA).transfer(msg.sender, amountA);
         ERC20(tokenB).transfer(msg.sender, amountB);
-        transferFrom(msg.sender, address(this), liquidity);
+        // 燒毀
+        // (不懂，addLiquidity 時是 mint 給 msg.sender，為什麼 removeLiquidity 時要先把 LP 轉回來再 burn，為什麼不直接 burn(msg.sender)，上課再來問)
+        _transfer(msg.sender, address(this), liquidity);
         _burn(address(this), liquidity);
+        // 記錄
         reserveA -= amountA;
         reserveB -= amountB;
         emit RemoveLiquidity(msg.sender, amountA, amountB, liquidity);
